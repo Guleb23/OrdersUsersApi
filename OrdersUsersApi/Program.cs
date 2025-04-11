@@ -40,7 +40,7 @@ namespace OrdersUsersApi
                     builder =>
                     {
                         builder.WithOrigins(
-                                "http://localhost:3000"
+                                "http://localhost:3000", "https://test-server-psi-liart.vercel.app"
 
                             )
                            .AllowAnyMethod()
