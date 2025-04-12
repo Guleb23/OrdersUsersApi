@@ -664,44 +664,46 @@ namespace OrdersUsersApi.DashboardMain
                 }
             });
 
-            group.MapGet("/client-details/{userId}/{name}", async (AppDbContext db, int userId, string name) =>
+            group.MapGet("/orderdetails/{userId:int}/{orderId:int}", async (AppDbContext db, int userId, int orderId) =>
             {
-                var client = await db.Clients
-                    .Include(c => c.Orders)
-                        .ThenInclude(o => o.Products)
-                            .ThenInclude(op => op.Product)
-                                .ThenInclude(p => p.Category)
-                    .FirstOrDefaultAsync(c => c.FullName == name && c.UserId == userId);
+                var order = await db.Orders
+                    .Include(o => o.Client)
+                    .Include(o => o.Products)
+                        .ThenInclude(op => op.Product)
+                            .ThenInclude(p => p.Category)
+                    .FirstOrDefaultAsync(o => o.Id == orderId && o.Client.UserId == userId);
 
-                if (client == null)
-                    return Results.NotFound($"Клиент {name} не найден.");
+                if (order == null)
+                    return Results.NotFound($"Заказ с ID {orderId} для пользователя {userId} не найден.");
 
                 var result = new
                 {
-                    id = client.Id,
-                    fullName = client.FullName,
-                    phone = client.Phone,
-                    address = client.Address,
-                    cashback = client.Cashback,
-                    orders = client.Orders.Select(o => new
+                    orderId = order.Id,
+                    date = order.Date.ToString("dd.MM.yyyy"),
+                    deliveryMethod = order.DeliveryMethod,
+                    status = order.Status,
+                    client = new
                     {
-                        orderId = o.Id,
-                        date = o.Date.ToString("dd.MM.yyyy"),
-                        totalPriceWithoutDiscount = o.Products.Sum(p => p.Total),
-                        discountPercent = o.DiscountPercent,
-                        discountAmount = o.Products.Sum(p => p.Total) * ((decimal)o.DiscountPercent / 100),
-                        cashbackUsed = o.CashbackUsed,
-                        cashbackEarned = o.CashbackEarned,
-                        finalTotalPrice = o.TotalPrice,
-                        products = o.Products.Select(op => new
-                        {
-                            name = op.Product.Name,
-                            category = op.Product.Category.CategoryName,
-                            quantity = op.Quantity,
-                            price = op.Product.Price,
-                            total = op.Total
-                        })
-                    }).OrderByDescending(o => o.date)
+                        id = order.Client.Id,
+                        fullName = order.Client.FullName,
+                        phone = order.Client.Phone,
+                        address = order.Client.Address
+                    },
+                    discountPercent = order.DiscountPercent,
+                    discountReason = order.DiscountReason,
+                    cashbackUsed = order.CashbackUsed,
+                    cashbackEarned = order.CashbackEarned,
+                    finalTotalPrice = order.TotalPrice,
+                    products = order.Products.Select(op => new
+                    {
+                        name = op.Product.Name,
+                        category = op.Product.Category.CategoryName,
+                        quantity = op.Quantity,
+                        price = op.Product.Price,
+                        total = op.Total
+                    }),
+                    totalPriceWithoutDiscount = order.Products.Sum(p => p.Total),
+                    discountAmount = order.Products.Sum(p => p.Total) * ((decimal)order.DiscountPercent / 100)
                 };
 
                 return Results.Ok(result);
