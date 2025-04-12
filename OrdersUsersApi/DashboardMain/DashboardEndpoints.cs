@@ -628,6 +628,160 @@ namespace OrdersUsersApi.DashboardMain
                 });
             });
 
+            // Удаление продукта из заказа
+            group.MapDelete("/order/{orderId}/product/{productName}", async (AppDbContext db, int orderId, string productName) =>
+            {
+                var order = await db.Orders
+                    .Include(o => o.Products)
+                        .ThenInclude(op => op.Product)
+                    .FirstOrDefaultAsync(o => o.Id == orderId);
+
+                if (order is null)
+                    return Results.NotFound($"Заказ с ID {orderId} не найден.");
+
+                var orderProduct = order.Products
+                    .FirstOrDefault(op => op.Product.Name.Equals(productName, StringComparison.OrdinalIgnoreCase));
+
+                if (orderProduct is null)
+                    return Results.NotFound($"Продукт '{productName}' не найден в заказе.");
+
+                order.Products.Remove(orderProduct);
+                order.TotalPrice = order.CalculateTotalPrice();
+
+                try
+                {
+                    await db.SaveChangesAsync();
+                    return Results.Ok($"Продукт '{productName}' удалён. Общая сумма пересчитана.");
+                }
+                catch (Exception ex)
+                {
+                    return Results.Problem($"Ошибка при удалении: {ex.Message}");
+                }
+            });
+
+
+            // Обновление количества продукта в заказе
+            group.MapPut("/order/{orderId}/product/{productName}", async (AppDbContext db, int orderId, string productName, OrderProductDTO dto) =>
+            {
+                var order = await db.Orders
+                    .Include(o => o.Products)
+                        .ThenInclude(op => op.Product)
+                    .FirstOrDefaultAsync(o => o.Id == orderId);
+
+                if (order is null)
+                    return Results.NotFound($"Заказ с ID {orderId} не найден.");
+
+                // Найдем старый продукт в заказе, который нужно заменить
+                var orderProduct = order.Products
+                    .FirstOrDefault(op => op.Product.Name.Equals(productName, StringComparison.OrdinalIgnoreCase));
+
+                // Если старый продукт найден, удаляем его из заказа
+                if (orderProduct != null)
+                {
+                    order.Products.Remove(orderProduct);  // Удаляем старый продукт
+                }
+                try
+                {
+                    // Ищем новый продукт по имени, которое пришло в запросе
+                    var newProduct = await db.Products
+    .Include(p => p.Category)
+    .FirstOrDefaultAsync(p => p.Name.ToLower() == dto.ProductName.ToLower());
+                    if (newProduct == null)
+                    {
+                        return Results.NotFound($"Продукт '{dto.ProductName}' не найден.");
+                    }
+
+                    // Создаем новый объект связи между заказом и новым продуктом
+                    var newOrderProduct = new OrderProduct
+                    {
+                        ProductId = newProduct.Id,
+                        Product = newProduct,
+                        Quantity = dto.Quantity  // Устанавливаем количество
+                    };
+
+                    // Добавляем новый продукт в заказ
+                    order.Products.Add(newOrderProduct);
+                }
+                catch (Exception ex)
+                {
+                    // Логирование ошибки
+                    Console.WriteLine($"Error occurred: {ex.Message}");
+                    throw;
+                }
+                
+
+                // Пересчитываем итоговую стоимость заказа
+                order.TotalPrice = order.CalculateTotalPrice();
+
+                try
+                {
+                    await db.SaveChangesAsync();  // Сохраняем изменения
+                    return Results.Ok($"Продукт '{productName}' был заменен на '{dto.ProductName}'. Итоговая сумма пересчитана.");
+                }
+                catch (Exception ex)
+                {
+                    return Results.Problem($"Ошибка при обновлении: {ex.Message}");
+                }
+            });
+
+            group.MapGet("/order-details/{orderId}", async (AppDbContext db, int orderId) =>
+            {
+                var order = await db.Orders
+                    .Include(o => o.Products)
+                        .ThenInclude(op => op.Product)
+                            .ThenInclude(p => p.Category)
+                    .FirstOrDefaultAsync(o => o.Id == orderId);
+
+                if (order == null)
+                {
+                    return Results.NotFound($"Заказ с ID {orderId} не найден.");
+                }
+
+                var orderDetailsDto = new
+                {
+                    orderId = order.Id,
+                    date = order.Date.ToString("yyyy-MM-dd HH:mm"),
+                    finalTotalPrice = order.TotalPrice,
+                    products = order.Products.Select(op => new
+                    {
+                        name = op.Product.Name,
+                        category = op.Product.Category.CategoryName, // ✅ Вот так!
+                        price = op.Product.Price,
+                        quantity = op.Quantity
+                    }).ToList()
+                };
+
+                return Results.Ok(orderDetailsDto);
+            });
+
+
+            group.MapDelete("/order/{orderId}", async (AppDbContext db, int orderId) =>
+            {
+                var order = await db.Orders
+                    .Include(o => o.Products) // Загружаем связанные продукты
+                    .FirstOrDefaultAsync(o => o.Id == orderId);
+
+                if (order is null)
+                    return Results.NotFound($"Заказ с ID {orderId} не найден.");
+
+                try
+                {
+                    // Удалим связанные записи в OrderProduct (если каскад не настроен)
+                    db.OrderProducts.RemoveRange(order.Products);
+
+                    // Удалим сам заказ
+                    db.Orders.Remove(order);
+
+                    await db.SaveChangesAsync();
+
+                    return Results.Ok($"Заказ с ID {orderId} успешно удалён.");
+                }
+                catch (Exception ex)
+                {
+                    return Results.Problem($"Ошибка при удалении заказа: {ex.Message}");
+                }
+            });
+
         }
     }
 

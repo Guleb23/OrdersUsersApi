@@ -27,3 +27,4 @@ public class Order
         return total >= 0 ? total : 0; // На случай, если скидка/кешбэк больше суммы
     }
 }
+
