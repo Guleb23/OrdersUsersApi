@@ -14,6 +14,7 @@ namespace OrdersUsersApi.Context
                     FirstName = "Админ",
                     LastName = "Системный",
                     Email = "admin@example.com",
+                    CashbackPercent = 5,
                     Password = "Admin123" // Здесь должен быть хеш
                 };
                 context.Users.Add(user);
@@ -36,21 +37,21 @@ namespace OrdersUsersApi.Context
             // Продукты
             var products = new List<Product>
             {
-                new() { Name = "Яблоко", Category = categories[0], Price = 60m, Cost = 30m, Weight = 0.2f },
-                new() { Name = "Банан", Category = categories[0], Price = 80m, Cost = 45m, Weight = 0.25f },
-                new() { Name = "Апельсин", Category = categories[0], Price = 90m, Cost = 50m, Weight = 0.3f },
-                new() { Name = "Груша", Category = categories[0], Price = 70m, Cost = 35m, Weight = 0.25f },
-                new() { Name = "Морковь", Category = categories[1], Price = 40m, Cost = 20m, Weight = 0.3f },
-                new() { Name = "Огурец", Category = categories[1], Price = 50m, Cost = 25m, Weight = 0.2f },
-                new() { Name = "Помидор", Category = categories[1], Price = 55m, Cost = 30m, Weight = 0.25f },
-                new() { Name = "Капуста", Category = categories[1], Price = 35m, Cost = 15m, Weight = 1.0f },
-                new() { Name = "Молоко", Category = categories[2], Price = 100m, Cost = 65m, Weight = 1.0f },
-                new() { Name = "Сметана", Category = categories[2], Price = 120m, Cost = 70m, Weight = 0.4f },
-                new() { Name = "Йогурт", Category = categories[2], Price = 85m, Cost = 45m, Weight = 0.3f },
-                new() { Name = "Кефир", Category = categories[2], Price = 90m, Cost = 50m, Weight = 1.0f },
-                new() { Name = "Брокколи", Category = categories[1], Price = 75m, Cost = 40m, Weight = 0.4f },
-                new() { Name = "Малина", Category = categories[0], Price = 200m, Cost = 110m, Weight = 0.15f },
-                new() { Name = "Творог", Category = categories[2], Price = 110m, Cost = 60m, Weight = 0.5f },
+                new() { Name = "Яблоко", Category = categories[0], Price = 60m, Cost = 30m, Weight = 1000f },
+                new() { Name = "Банан", Category = categories[0], Price = 80m, Cost = 45m, Weight =1000f },
+                new() { Name = "Апельсин", Category = categories[0], Price = 90m, Cost = 50m, Weight = 1000f },
+                new() { Name = "Груша", Category = categories[0], Price = 70m, Cost = 35m, Weight = 1000f },
+                new() { Name = "Морковь", Category = categories[1], Price = 40m, Cost = 20m, Weight = 1000f },
+                new() { Name = "Огурец", Category = categories[1], Price = 50m, Cost = 25m, Weight = 1000f },
+                new() { Name = "Помидор", Category = categories[1], Price = 55m, Cost = 30m, Weight = 1000f },
+                new() { Name = "Капуста", Category = categories[1], Price = 35m, Cost = 15m, Weight =1000f },
+                new() { Name = "Молоко", Category = categories[2], Price = 100m, Cost = 65m, Weight = 1000f },
+                new() { Name = "Сметана", Category = categories[2], Price = 120m, Cost = 70m, Weight = 1000f },
+                new() { Name = "Йогурт", Category = categories[2], Price = 85m, Cost = 45m, Weight = 1000f },
+                new() { Name = "Кефир", Category = categories[2], Price = 90m, Cost = 50m, Weight = 1000f },
+                new() { Name = "Брокколи", Category = categories[1], Price = 75m, Cost = 40m, Weight =1000f },
+                new() { Name = "Малина", Category = categories[0], Price = 200m, Cost = 110m, Weight = 1000f },
+                new() { Name = "Творог", Category = categories[2], Price = 110m, Cost = 60m, Weight = 1000f },
             };
             context.Products.AddRange(products);
 
