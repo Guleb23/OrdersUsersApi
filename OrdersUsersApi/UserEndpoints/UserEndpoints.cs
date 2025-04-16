@@ -56,7 +56,7 @@ namespace OrdersUsersApi.UserEndpoints
                 return Results.Ok(new
                 {
                     token,
-                    user = new { user.Id, user.Email, user.FirstName, user.LastName }
+                    user = new { user.Id, user.Email, user.FirstName, user.LastName, user.CashbackPercent }
                 });
             });
             group.MapPut("/update/{id}", async ([FromRoute] int id, [FromBody] UpdateUserDTO updatedUser, AppDbContext context) =>
@@ -71,6 +71,7 @@ namespace OrdersUsersApi.UserEndpoints
                 user.FirstName = updatedUser.FirstName;
                 user.LastName = updatedUser.LastName;
                 user.Email = updatedUser.Email;
+                user.CashbackPercent = updatedUser.cashbackPercent;
 
                 if (!string.IsNullOrEmpty(updatedUser.NewPassword))
                 {
@@ -79,6 +80,45 @@ namespace OrdersUsersApi.UserEndpoints
 
                 await context.SaveChangesAsync();
                 return Results.Ok("Профиль успешно обновлён");
+            });
+
+            group.MapGet("/getuser/{userId}", async ([FromRoute] int userId, AppDbContext context) =>
+            {
+                var user = context.Users.Find(userId);
+                return user;
+            });
+            group.MapDelete("/delete/{id}", async ([FromRoute] int id, AppDbContext context) =>
+            {
+                var user = await context.Users.FindAsync(id);
+                if (user == null)
+                    return Results.NotFound("Пользователь не найден");
+
+                // Удаление клиентов пользователя
+                var clients = await context.Clients.Where(c => c.UserId == id).ToListAsync();
+                foreach (var client in clients)
+                {
+                    // Удаление заказов клиента
+                    var orders = await context.Orders
+                        .Where(o => o.ClientId == client.Id)
+                        .Include(o => o.Products)
+                        .ToListAsync();
+
+                    foreach (var order in orders)
+                    {
+                        context.OrderProducts.RemoveRange(order.Products); // связанные товары
+                    }
+
+                    context.Orders.RemoveRange(orders);
+                }
+
+                context.Clients.RemoveRange(clients);
+
+                // Можно добавить другие связанные сущности, если они есть
+
+                context.Users.Remove(user);
+                await context.SaveChangesAsync();
+
+                return Results.Ok("Пользователь и все связанные данные успешно удалены");
             });
         }
     }

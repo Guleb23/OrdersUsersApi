@@ -46,39 +46,74 @@ namespace OrdersUsersApi.DashboardMain
             // 2. График выручки
             group.MapGet("/revenue-chart", async (AppDbContext db, int userId) =>
             {
-                var now = DateTimeOffset.UtcNow;
-                var weekStart = now.AddDays(-7);
-                var halfYearStart = now.AddMonths(-5).AddDays(-now.Day + 1);
+                // Сегодняшняя дата в UTC (без времени)
+                var today = DateTime.UtcNow.Date;
+
+                // Начало недели (7 дней назад от сегодня)
+                var weekStart = today.AddDays(-7);
+
+                // Конец недели (сегодня)
+                var weekEnd = today;
+
+                Console.WriteLine($"weekStart: {weekStart}");  // Должно быть 7 дней назад
+                Console.WriteLine($"weekEnd: {weekEnd}");      // Должно быть сегодня
 
                 var weekOrders = await db.Orders
-                    .Where(o => o.Date >= weekStart && o.Date <= now && o.Client.UserId == userId)
+                    .Where(o => o.Date >= weekStart && o.Date <= weekEnd && o.Client.UserId == userId)
                     .Include(o => o.Products)
                     .ToListAsync();
+
+                // Логируем количество заказов за неделю
+                Console.WriteLine($"Количество заказов за неделю: {weekOrders.Count}");
+
+                // --- Полгода: с начала месяца 6 месяцев назад до конца предыдущего месяца ---
+                var currentMonth = today.Month;
+                var currentYear = today.Year;
+                var sixMonthsAgo = today.AddMonths(-6);
+                var halfYearStart = new DateTime(sixMonthsAgo.Year, sixMonthsAgo.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+                var halfYearEnd = new DateTime(currentYear, currentMonth, 1, 0, 0, 0, DateTimeKind.Utc).AddDays(-1);
 
                 var halfYearOrders = await db.Orders
-                    .Where(o => o.Date >= halfYearStart && o.Date <= now && o.Client.UserId == userId)
+                    .Where(o => o.Date >= halfYearStart && o.Date <= halfYearEnd && o.Client.UserId == userId)
                     .Include(o => o.Products)
                     .ToListAsync();
 
-                var weekData = weekOrders.GroupBy(o => o.Date.DayOfWeek)
-                    .Select(g => new
-                    {
-                        Label = g.Key.ToString(),
-                        RevenueK = g.Sum(x => x.TotalPrice) / 1000,
-                        Units = g.Sum(x => x.Products.Sum(p => p.Quantity))
-                    }).ToList();
+                // --- Группировка по дням недели (за неделю) ---
+                // Получаем список всех дней недели за последний месяц
+                var allWeekDays = Enumerable.Range(0, 7)
+                    .Select(d => weekStart.AddDays(d))
+                    .ToList();
 
-                var halfYearData = halfYearOrders.GroupBy(o => new { o.Date.Year, o.Date.Month })
+                var weekData = allWeekDays
+                    .Select(day =>
+                    {
+                        var dayOrders = weekOrders.Where(o => o.Date.Date == day.Date).ToList();
+                        return new
+                        {
+                            Label = day.ToString("dd.MM"),
+                            RevenueK = dayOrders.Sum(x => x.TotalPrice) / 1000,
+                            Units = dayOrders.Sum(x => x.Products.Sum(p => p.Quantity))
+                        };
+                    })
+                    .OrderBy(g => g.Label) // Сортировка по дате
+                    .ToList();
+
+                // --- Группировка по месяцам (за полгода) ---
+                var halfYearData = halfYearOrders
+                    .GroupBy(o => new { o.Date.Year, o.Date.Month })
+                    .OrderBy(g => g.Key.Year).ThenBy(g => g.Key.Month)
                     .Select(g => new
                     {
                         Label = $"{g.Key.Month:D2}.{g.Key.Year}",
                         RevenueK = g.Sum(x => x.TotalPrice) / 1000,
                         Units = g.Sum(x => x.Products.Sum(p => p.Quantity))
-                    }).ToList();
+                    })
+                    .ToList();
 
+                // --- Финальный результат ---
                 var result = new
                 {
-                    halfYear = new 
+                    halfYear = new
                     {
                         revenue = halfYearOrders.Sum(x => x.TotalPrice) / 1000,
                         categories = halfYearData.Select(d => d.Label).ToArray(),
@@ -86,9 +121,9 @@ namespace OrdersUsersApi.DashboardMain
                         {
                 new { name = "Выручка, тыс.₽", data = halfYearData.Select(d => d.RevenueK).ToArray() },
                 new { name = "Продажи", data = halfYearData.Select(d => d.Units).ToArray() }
-            }
+                        }
                     },
-                    week = new 
+                    week = new
                     {
                         revenue = weekOrders.Sum(x => x.TotalPrice) / 1000,
                         categories = weekData.Select(d => d.Label).ToArray(),
@@ -96,7 +131,7 @@ namespace OrdersUsersApi.DashboardMain
                         {
                 new { name = "Выручка, тыс.₽", data = weekData.Select(d => d.RevenueK).ToArray() },
                 new { name = "Продажи", data = weekData.Select(d => d.Units).ToArray() }
-            }
+                        }
                     }
                 };
 
@@ -162,6 +197,24 @@ namespace OrdersUsersApi.DashboardMain
                     .ToListAsync();
 
                 return Results.Ok(recentOrders);
+            });
+            group.MapGet("/all-sales", async (AppDbContext db, int userId) =>
+            {
+                var allOrders = await db.Orders
+                    .Where(o => o.Client.UserId == userId)
+                    .Include(o => o.Client)
+                    .OrderByDescending(o => o.Date)
+                    .Select(o => new
+                    {
+                        ID = o.Id.ToString(),
+                        client = o.Client.FullName,
+                        cost = $"{o.TotalPrice:F0}₽",
+                        date = o.Date.ToString("dd.MM.yyyy"),
+                        status = o.Status
+                    })
+                    .ToListAsync();
+
+                return Results.Ok(allOrders);
             });
 
             // 5. Топ-10 продуктов
@@ -240,7 +293,8 @@ namespace OrdersUsersApi.DashboardMain
                             fullName = c.FullName,
                             phone = c.Phone,
                             address = c.Address,
-                            cashback = c.Cashback
+                            cashback = c.Cashback,
+                            comment = c.Comment
                         })
                         .ToListAsync();
 
@@ -434,7 +488,7 @@ namespace OrdersUsersApi.DashboardMain
                         FullName = clientDto.FullName,
                         Phone = clientDto.Phone,
                         Address = clientDto.Address,
-                        Cashback = clientDto.Cashback,
+                        Cashback = 0,
                         Comment = clientDto.Comment,
                         UserId = clientDto.UserId
                     };
@@ -506,12 +560,19 @@ namespace OrdersUsersApi.DashboardMain
             });
             group.MapPost("/createOrder", async (AppDbContext db, CreateOrderDTO dto) =>
             {
-                var client = await db.Clients.FirstOrDefaultAsync(c => c.Id == dto.ClientId && c.UserId == dto.UserId);
+                var client = await db.Clients
+                    .FirstOrDefaultAsync(c => c.Id == dto.ClientId && c.UserId == dto.UserId);
                 if (client == null)
                     return Results.BadRequest("Клиент не найден.");
 
                 if (client.Cashback < dto.CashbackUsed)
                     return Results.BadRequest("Недостаточно кешбэка.");
+
+                var user = await db.Users.FirstOrDefaultAsync(u => u.Id == dto.UserId);
+                if (user == null)
+                    return Results.BadRequest("Пользователь не найден.");
+
+                var cashbackPercent = user.CashbackPercent / 100m;
 
                 var order = new Order
                 {
@@ -538,7 +599,9 @@ namespace OrdersUsersApi.DashboardMain
                 }
 
                 var productIds = order.Products.Select(p => p.ProductId).ToList();
-                var productsFromDb = await db.Products.Where(p => productIds.Contains(p.Id)).ToListAsync();
+                var productsFromDb = await db.Products
+                    .Where(p => productIds.Contains(p.Id))
+                    .ToListAsync();
 
                 var subtotal = productsFromDb.Sum(p =>
                 {
@@ -549,7 +612,9 @@ namespace OrdersUsersApi.DashboardMain
                 var discount = subtotal * ((decimal)order.DiscountPercent / 100m);
                 var finalPrice = subtotal - discount - order.CashbackUsed;
                 order.TotalPrice = finalPrice >= 0 ? finalPrice : 0;
-                order.CashbackEarned = (subtotal - discount) * 0.05m;
+
+                // Используем процент кешбэка из пользователя
+                order.CashbackEarned = (subtotal - discount) * cashbackPercent;
 
                 client.Cashback = client.Cashback - order.CashbackUsed + order.CashbackEarned;
 
@@ -734,6 +799,109 @@ namespace OrdersUsersApi.DashboardMain
                 catch (Exception ex)
                 {
                     return Results.Problem($"Ошибка при удалении заказа: {ex.Message}");
+                }
+            });
+
+            // Добавление продукта в существующий заказ
+            group.MapPost("/order/{orderId}/product", async (AppDbContext db, int orderId, AddProductToOrderDTO dto) =>
+            {
+                // Находим заказ с включенными продуктами и клиентом
+                var order = await db.Orders
+                    .Include(o => o.Products)
+                        .ThenInclude(op => op.Product)
+                    .Include(o => o.Client)
+                    .FirstOrDefaultAsync(o => o.Id == orderId);
+
+                if (order == null)
+                    return Results.NotFound($"Заказ с ID {orderId} не найден.");
+
+                // Проверяем, существует ли продукт
+                var product = await db.Products
+                    .Include(p => p.Category)
+                    .FirstOrDefaultAsync(p => p.Id == dto.ProductId);
+
+                if (product == null)
+                    return Results.NotFound($"Продукт с ID {dto.ProductId} не найден.");
+
+                // Проверяем, не добавлен ли уже этот продукт в заказ
+                var existingProduct = order.Products.FirstOrDefault(op => op.ProductId == dto.ProductId);
+
+                if (existingProduct != null)
+                {
+                    // Если продукт уже есть в заказе - увеличиваем количество
+                    existingProduct.Quantity += dto.Quantity;
+                }
+                else
+                {
+                    // Если продукта нет в заказе - добавляем новый
+                    order.Products.Add(new OrderProduct
+                    {
+                        ProductId = dto.ProductId,
+                        Quantity = dto.Quantity
+                    });
+                }
+
+                // Пересчитываем стоимость заказа
+                var productIds = order.Products.Select(p => p.ProductId).ToList();
+                var productsFromDb = await db.Products.Where(p => productIds.Contains(p.Id)).ToListAsync();
+
+                var subtotal = productsFromDb.Sum(p =>
+                {
+                    var quantity = order.Products.First(op => op.ProductId == p.Id).Quantity;
+                    return p.Price * quantity;
+                });
+
+                var discount = subtotal * ((decimal)order.DiscountPercent / 100m);
+                var finalPrice = subtotal - discount - order.CashbackUsed;
+                order.TotalPrice = finalPrice >= 0 ? finalPrice : 0;
+
+                // Пересчитываем кэшбэк (5% от суммы после скидки)
+                order.CashbackEarned = (subtotal - discount) * 0.05m;
+
+                try
+                {
+                    await db.SaveChangesAsync();
+                    return Results.Ok(new
+                    {
+                        message = $"Продукт '{product.Name}' успешно добавлен в заказ",
+                        orderId = order.Id,
+                        finalPrice = order.TotalPrice,
+                        cashbackEarned = order.CashbackEarned
+                    });
+                }
+                catch (Exception ex)
+                {
+                    return Results.Problem($"Ошибка при добавлении продукта: {ex.Message}");
+                }
+            });
+            group.MapPut("/order/{orderId}/status", async (AppDbContext db, int orderId, UpdateOrderStatusDTO dto) =>
+            {
+                // Находим заказ по ID
+                var order = await db.Orders.FirstOrDefaultAsync(o => o.Id == orderId);
+
+                // Если заказ не найден, возвращаем ошибку 404
+                if (order == null)
+                    return Results.NotFound($"Заказ с ID {orderId} не найден.");
+
+                // Обновляем статус заказа
+                order.Status = dto.Status;
+
+                try
+                {
+                    // Сохраняем изменения в базе данных
+                    await db.SaveChangesAsync();
+
+                    // Возвращаем успешный ответ с новым статусом
+                    return Results.Ok(new
+                    {
+                        message = $"Статус заказа с ID {orderId} обновлён на {(dto.Status ? "оплачено" : "не оплачено")}.",
+                        newStatus = order.Status
+                    });
+                }
+                catch (Exception ex)
+                {
+                    // Обработка ошибки при сохранении
+                    return Results.Problem($"Ошибка при обновлении статуса: {ex.Message}");
                 }
             });
 
