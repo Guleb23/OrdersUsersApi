@@ -46,40 +46,29 @@ namespace OrdersUsersApi.DashboardMain
             // 2. График выручки
             group.MapGet("/revenue-chart", async (AppDbContext db, int userId) =>
             {
-                // Сегодняшняя дата в UTC (без времени)
-                var today = DateTime.UtcNow.Date;
+                // Сегодняшняя дата в UTC без времени
+                var today = DateTimeOffset.UtcNow.UtcDateTime.Date;
 
-                // Начало недели (7 дней назад от сегодня)
+                // Неделя назад и сегодня
                 var weekStart = today.AddDays(-7);
-
-                // Конец недели (сегодня)
                 var weekEnd = today;
 
-                Console.WriteLine($"weekStart: {weekStart}");  // Должно быть 7 дней назад
-                Console.WriteLine($"weekEnd: {weekEnd}");      // Должно быть сегодня
-
                 var weekOrders = await db.Orders
-                    .Where(o => o.Date >= weekStart && o.Date <= weekEnd && o.Client.UserId == userId)
+                    .Where(o => o.Date.UtcDateTime.Date >= weekStart && o.Date.UtcDateTime.Date <= weekEnd && o.Client.UserId == userId)
                     .Include(o => o.Products)
                     .ToListAsync();
 
-                // Логируем количество заказов за неделю
-                Console.WriteLine($"Количество заказов за неделю: {weekOrders.Count}");
-
-                // --- Полгода: с начала месяца 6 месяцев назад до конца предыдущего месяца ---
-                var currentMonth = today.Month;
-                var currentYear = today.Year;
+                // Полгода назад — с начала месяца
                 var sixMonthsAgo = today.AddMonths(-6);
                 var halfYearStart = new DateTime(sixMonthsAgo.Year, sixMonthsAgo.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-                var halfYearEnd = new DateTime(currentYear, currentMonth, 1, 0, 0, 0, DateTimeKind.Utc).AddDays(-1);
+                var halfYearEnd = new DateTime(today.Year, today.Month, 1, 0, 0, 0, DateTimeKind.Utc).AddDays(-1);
 
                 var halfYearOrders = await db.Orders
-                    .Where(o => o.Date >= halfYearStart && o.Date <= halfYearEnd && o.Client.UserId == userId)
+                    .Where(o => o.Date.UtcDateTime >= halfYearStart && o.Date.UtcDateTime <= halfYearEnd && o.Client.UserId == userId)
                     .Include(o => o.Products)
                     .ToListAsync();
 
-                // --- Группировка по дням недели (за неделю) ---
-                // Получаем список всех дней недели за последний месяц
+                // Группировка по дням за неделю
                 var allWeekDays = Enumerable.Range(0, 7)
                     .Select(d => weekStart.AddDays(d))
                     .ToList();
@@ -87,7 +76,7 @@ namespace OrdersUsersApi.DashboardMain
                 var weekData = allWeekDays
                     .Select(day =>
                     {
-                        var dayOrders = weekOrders.Where(o => o.Date.Date == day.Date).ToList();
+                        var dayOrders = weekOrders.Where(o => o.Date.UtcDateTime.Date == day).ToList();
                         return new
                         {
                             Label = day.ToString("dd.MM"),
@@ -95,12 +84,12 @@ namespace OrdersUsersApi.DashboardMain
                             Units = dayOrders.Sum(x => x.Products.Sum(p => p.Quantity))
                         };
                     })
-                    .OrderBy(g => g.Label) // Сортировка по дате
+                    .OrderBy(x => x.Label)
                     .ToList();
 
-                // --- Группировка по месяцам (за полгода) ---
+                // Группировка по месяцам за полгода
                 var halfYearData = halfYearOrders
-                    .GroupBy(o => new { o.Date.Year, o.Date.Month })
+                    .GroupBy(o => new { o.Date.UtcDateTime.Year, o.Date.UtcDateTime.Month })
                     .OrderBy(g => g.Key.Year).ThenBy(g => g.Key.Month)
                     .Select(g => new
                     {
@@ -110,7 +99,7 @@ namespace OrdersUsersApi.DashboardMain
                     })
                     .ToList();
 
-                // --- Финальный результат ---
+                // Финальный результат
                 var result = new
                 {
                     halfYear = new
