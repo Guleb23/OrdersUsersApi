@@ -4,6 +4,7 @@ using OrdersUsersApi.Context;
 using OrdersUsersApi.DTO.User;
 using OrdersUsersApi.Helpers;
 using OrdersUsersApi.Models;
+using BCrypt.Net; // Добавляем библиотеку для хеширования
 
 namespace OrdersUsersApi.UserEndpoints
 {
@@ -13,69 +14,90 @@ namespace OrdersUsersApi.UserEndpoints
         {
             var group = app.MapGroup("/api/user").WithTags("User");
 
+            // Регистрация пользователя
             group.MapPost("/register", async ([FromBody] RegisterDTO user, AppDbContext context, IConfiguration config) =>
             {
-                var exsitingUser = context.Users.FirstOrDefault(u => u.Email == user.Email);
-                if (exsitingUser != null) 
+                // Проверяем, есть ли уже пользователь с таким email
+                var existingUser = await context.Users.FirstOrDefaultAsync(u => u.Email == user.Email);
+                if (existingUser != null)
                 {
-                    return Results.Conflict("Пользователь с таким email уже зарегестрирован");
+                    return Results.Conflict("Пользователь с таким email уже зарегистрирован");
                 }
-                else
+
+                // Создаем нового пользователя
+                User newUser = new User()
                 {
-                    User newUser = new User()
+                    Email = user.Email,
+                    FirstName = user.FirstName,
+                    LastName = user.LastName,
+                    // Хешируем пароль перед сохранением
+                    Password = BCrypt.Net.BCrypt.HashPassword(user.Password)
+                };
+
+                context.Users.Add(newUser);
+                await context.SaveChangesAsync();
+
+                // Генерируем JWT токен
+                var token = JwtHelper.GenerateToken(newUser.Email, config);
+
+                // Возвращаем токен и данные пользователя (без пароля)
+                return Results.Ok(new
+                {
+                    token,
+                    user = new
                     {
-                        Email = user.Email,
-                        FirstName = user.FirstName,
-                        LastName = user.LastName,
-                        Password = user.Password,
-                    };
-
-                    
-                    context.Users.Add(newUser);
-                    var token = JwtHelper.GenerateToken(newUser.Email, config);
-                    await context.SaveChangesAsync();
-                    
-                    return Results.Ok(new{
-                        token,
-                        user = newUser
-                    });
-
+                        newUser.Id,
+                        newUser.Email,
+                        newUser.FirstName,
+                        newUser.LastName,
+                        newUser.CashbackPercent
                     }
-                
                 });
+            });
 
+            // Авторизация пользователя
             group.MapPost("/login", async ([FromBody] LoginDTO loginDto, AppDbContext context, IConfiguration config) =>
             {
+                // Ищем пользователя по email
                 var user = await context.Users.FirstOrDefaultAsync(u => u.Email == loginDto.Email);
 
-                if (user == null || user.Password != loginDto.Password)
-                    return Results.Unauthorized();
+                // Проверяем пароль с помощью BCrypt
+                if (user == null || !BCrypt.Net.BCrypt.Verify(loginDto.Password, user.Password))
+                    return Results.Unauthorized(); // Неверный email или пароль
 
+                // Генерируем JWT токен
                 var token = JwtHelper.GenerateToken(user.Email, config);
 
+                // Возвращаем токен и данные пользователя (без пароля)
                 return Results.Ok(new
                 {
                     token,
                     user = new { user.Id, user.Email, user.FirstName, user.LastName, user.CashbackPercent }
                 });
             });
+
+            // Обновление данных пользователя
             group.MapPut("/update/{id}", async ([FromRoute] int id, [FromBody] UpdateUserDTO updatedUser, AppDbContext context) =>
             {
+                // Находим пользователя
                 var user = await context.Users.FindAsync(id);
                 if (user == null)
                     return Results.NotFound("Пользователь не найден");
 
-                if (user.Password != updatedUser.OldPassword)
+                // Проверяем старый пароль
+                if (!BCrypt.Net.BCrypt.Verify(updatedUser.OldPassword, user.Password))
                     return Results.BadRequest("Старый пароль неверный");
 
+                // Обновляем данные
                 user.FirstName = updatedUser.FirstName;
                 user.LastName = updatedUser.LastName;
                 user.Email = updatedUser.Email;
                 user.CashbackPercent = updatedUser.cashbackPercent;
 
+                // Если указан новый пароль - хешируем и сохраняем
                 if (!string.IsNullOrEmpty(updatedUser.NewPassword))
                 {
-                    user.Password = updatedUser.NewPassword;
+                    user.Password = BCrypt.Net.BCrypt.HashPassword(updatedUser.NewPassword);
                 }
 
                 await context.SaveChangesAsync();

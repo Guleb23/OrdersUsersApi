@@ -15,7 +15,7 @@ namespace OrdersUsersApi.Context
                     LastName = "Системный",
                     Email = "admin@example.com",
                     CashbackPercent = 5,
-                    Password = "Admin123" // Здесь должен быть хеш
+                    Password = BCrypt.Net.BCrypt.HashPassword("Admin123")
                 };
                 context.Users.Add(user);
                 context.SaveChanges();
