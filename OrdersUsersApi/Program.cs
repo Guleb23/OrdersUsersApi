@@ -1,10 +1,4 @@
-
-using Microsoft.IdentityModel.Tokens;
-using Microsoft.EntityFrameworkCore;
-using OrdersUsersApi.Context;
-using OrdersUsersApi.DashboardMain;
-using System.Text;
-using OrdersUsersApi.UserEndpoints;
+using OrdersUsersApi.ServerConfig;
 
 namespace OrdersUsersApi
 {
@@ -13,75 +7,22 @@ namespace OrdersUsersApi
         public static void Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
+            builder.Services.ConfigureAppServices(builder.Configuration);
 
-            // Add services to the container.
-            builder.Services.AddAuthentication("Bearer")
-     .AddJwtBearer("Bearer", options =>
-     {
-         var config = builder.Configuration;
-         options.TokenValidationParameters = new TokenValidationParameters
-         {
-             ValidateIssuer = true,
-             ValidIssuer = config["Jwt:Issuer"],
-             ValidateAudience = true,
-             ValidAudience = config["Jwt:Audience"],
-             ValidateLifetime = true,
-             ValidateIssuerSigningKey = true,
-             IssuerSigningKey = new SymmetricSecurityKey(
-                 Encoding.UTF8.GetBytes(config["Jwt:Key"]!)
-             )
-         };
-     });
-
-            builder.Services.AddAuthorization();
-            builder.Services.AddCors(options =>
+            try
             {
-                options.AddPolicy("AllowAllOrigins",
-                    builder =>
-                    {
-                        builder.WithOrigins(
-                                "http://localhost:3000", "https://test-server-psi-liart.vercel.app"
-
-                            )
-                           .AllowAnyMethod()
-                           .AllowAnyHeader()
-                           .AllowCredentials();
-                    });
-            });
-            // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
-            builder.Services.AddEndpointsApiExplorer();
-            builder.Services.AddSwaggerGen();
-            builder.Services.AddDbContext<AppDbContext>(options =>
-            {
-                options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"));
-            });
-            var app = builder.Build();
-            app.UseCors("AllowAllOrigins");
-            app.Urls.Add("http://*:5000");
-            app.MapDashboardEndpoints();
-            app.MapUserEndpoints();
-            using (var scope = app.Services.CreateScope())
-            {
-                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-                db.Database.Migrate(); // Применение миграций
-                DbInitializer.Seed(db); // Заполнение
+                var app = builder.Build();
+                var logger = app.Services
+                .GetRequiredService<ILogger<Program>>();
+                app.ApplyMigrationsAndSeed();
+                app.ConfigureApp();
+                app.Run();
             }
-            // Configure the HTTP request pipeline.
-            if (app.Environment.IsDevelopment())
+            catch (Exception ex)
             {
-                app.UseSwagger();
-                app.UseSwaggerUI();
+                Console.WriteLine("Критическая ошибка запуска " + ex.ToString());
+                throw;
             }
-
-            app.UseHttpsRedirection();
-
-            app.UseAuthorization();
-
-            app.MapGet("/", () =>
-            {
-                return "server is running";
-            });
-            app.Run();
         }
     }
 }

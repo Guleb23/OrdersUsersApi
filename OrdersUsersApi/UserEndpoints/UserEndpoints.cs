@@ -4,7 +4,6 @@ using OrdersUsersApi.Context;
 using OrdersUsersApi.DTO.User;
 using OrdersUsersApi.Helpers;
 using OrdersUsersApi.Models;
-using BCrypt.Net; // Добавляем библиотеку для хеширования
 
 namespace OrdersUsersApi.UserEndpoints
 {
@@ -60,7 +59,6 @@ namespace OrdersUsersApi.UserEndpoints
             {
                 // Ищем пользователя по email
                 var user = await context.Users.FirstOrDefaultAsync(u => u.Email == loginDto.Email);
-
                 // Проверяем пароль с помощью BCrypt
                 if (user == null || !BCrypt.Net.BCrypt.Verify(loginDto.Password, user.Password))
                     return Results.Unauthorized(); // Неверный email или пароль
@@ -103,12 +101,13 @@ namespace OrdersUsersApi.UserEndpoints
                 await context.SaveChangesAsync();
                 return Results.Ok("Профиль успешно обновлён");
             });
-
+            //  Получение данных пользователя
             group.MapGet("/getuser/{userId}", async ([FromRoute] int userId, AppDbContext context) =>
             {
                 var user = context.Users.Find(userId);
                 return user;
             });
+            //  Удаление данных пользователя
             group.MapDelete("/delete/{id}", async ([FromRoute] int id, AppDbContext context) =>
             {
                 var user = await context.Users.FindAsync(id);
