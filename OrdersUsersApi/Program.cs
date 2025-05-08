@@ -57,7 +57,7 @@ namespace OrdersUsersApi
             });
             var app = builder.Build();
             app.UseCors("AllowAllOrigins");
-            //app.Urls.Add("http://*:5000");
+            app.Urls.Add("http://*:5000");
             app.MapDashboardEndpoints();
             app.MapUserEndpoints();
             using (var scope = app.Services.CreateScope())
