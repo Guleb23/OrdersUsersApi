@@ -195,6 +195,25 @@ public static class MiniStatsEndpoints
             return Results.Ok(topClients);
         });
 
+        // 6. Последние продажи
+        group.MapGet("/recent-sales", async (AppDbContext db) =>
+        {
+            var recentOrders = await db.Orders
+                .Include(o => o.Client)
+                .OrderByDescending(o => o.Date)
+                .Take(10)
+                .Select(o => new
+                {
+                    ID = o.Id.ToString(),
+                    client = o.Client.FullName,
+                    cost = $"{o.TotalPrice:F0}₽",
+                    date = o.Date.ToString("dd.MM.yyyy")
+                })
+                .ToListAsync();
+
+            return Results.Ok(recentOrders);
+        });
+
         return group;
     }
 }
